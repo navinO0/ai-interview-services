@@ -1,0 +1,43 @@
+import { type Knex } from 'knex';
+
+export async function seed(knex: Knex): Promise<void> {
+    // Delete existing records to avoid conflicts if needed, or just insert
+    // For seeds, it's often safer to del() first
+    await knex('questions').where({ category: 'backend' }).del();
+    await knex('learning_paths').del();
+
+    // Inserts questions
+    await knex('questions').insert([
+        {
+            topic: 'Node.js',
+            difficulty: 'Intermediate',
+            question_text: 'What is the primary role of the Event Loop in Node.js?',
+            category: 'backend',
+            challenge_type: 'MCQ',
+            options: JSON.stringify(['Handling blocking I/O', 'Offloading async tasks to threads', 'Memory management', 'Compiling JavaScript to Machine Code']),
+            correct_option: 'Offloading async tasks to threads'
+        },
+        {
+            topic: 'Redis',
+            difficulty: 'Advanced',
+            question_text: 'const client = redis.createClient(); client.on("error", (err) => console.log("Redis Error", err)); // Missing reconnection logic',
+            category: 'backend',
+            challenge_type: 'DEBUGGING'
+        }
+    ]);
+
+    // Inserts learning paths
+    await knex('learning_paths').insert([
+        {
+            title: 'Fullstack Backend Mastery',
+            description: 'From zero to senior backend engineer.',
+            category: 'Backend',
+            level: 'Advanced',
+            steps: JSON.stringify([
+                { title: 'Foundations', content: 'Master the request-response cycle.' },
+                { title: 'Database Design', content: 'Normalizing and optimizing SQL schemas.' },
+                { title: 'Scaling', content: 'Distributed caching and load balancing.' }
+            ])
+        }
+    ]);
+}

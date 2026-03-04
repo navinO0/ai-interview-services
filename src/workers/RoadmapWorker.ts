@@ -16,11 +16,13 @@ export const roadmapWorker = new Worker('roadmap-generation', async (job: Job) =
     console.log(`[Worker] Processing roadmap for workspace: ${workspaceId} (${title})`);
 
     try {
-        // 1. Update status to processing
-        await db('workspaces').where({ id: workspaceId }).update({
+        // 1. Update status to processing and fetch userId
+        const [workspace] = await db('workspaces').where({ id: workspaceId }).update({
             status: 'processing',
             generation_progress: 0
-        });
+        }).returning('*');
+
+        const userId = workspace?.user_id;
 
         // 2. Incremental Generation (batches of 5 days)
         const batchSize = 5;
@@ -42,13 +44,13 @@ export const roadmapWorker = new Worker('roadmap-generation', async (job: Job) =
             1. "day_number": Integer.
             2. "title": Day topic.
             3. "description": Brief day overview.
-            4. "tasks": 3 tasks (theory, mcq, coding). Each task: { "type": "theory" | "mcq" | "coding", "title": "...", "content": "..." }.
+            4. "tasks": EXACTLY 3 tasks (one theory, one mcq, one coding). Each task MUST be an object formatted as: { "type": "theory" | "mcq" | "coding", "title": "...", "content": "..." }. Ensure the "tasks" array is always present.
 
             Respond with a JSON array of ${endDay - startDay + 1} objects.`;
 
             const systemPrompt = `You are an elite technical mentor. Return JSON array ONLY. Each item: { "day_number": number, "title": string, "description": string, "tasks": Array }`;
 
-            let batch = await ai.generate(prompt, systemPrompt, true);
+            let batch = await ai.generate(prompt, systemPrompt, true, userId);
 
             // Handle case where AI returns string even in JSON mode (e.g., markdown wrapping)
             if (typeof batch === 'string') {

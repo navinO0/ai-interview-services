@@ -102,6 +102,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     next();
 });
 
+// Root endpoint
+app.get('/', (req: Request, res: Response) => {
+    res.send('<html><body><h1>Hello</h1></body></html>');
+});
+
 // Health check
 app.get('/health', (req: Request, res: Response) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });

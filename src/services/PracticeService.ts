@@ -216,7 +216,7 @@ class PracticeService {
     }
 
     async generateSingleAdaptiveMCQ(topic: string, difficulty: string, learnerLevel: string = 'Professional', userId: string, sessionHistory: { question: string, is_correct: boolean, selected_option?: string }[] = []) {
-        console.log(`Generating adaptive MCQ for ${topic} (${difficulty}). Session history height: ${sessionHistory.length}.`);
+        console.log(`[PracticeService v2] Generating adaptive MCQ for ${topic} (${difficulty}). Session history height: ${sessionHistory.length}.`);
 
         // Fetch ALL historic questions for this user and topic from DB
         const dbHistory = await db('mcq_attempts')
@@ -266,18 +266,28 @@ class PracticeService {
         try {
             const result = await ai.generate(prompt, systemPrompt, true, userId);
 
-            const q = result;
+            let q = result;
+
+            // Handle wrapper objects
+            if (q && !q.question_text && !q.question) {
+                const possibleObj = Object.values(q).find(v => v && typeof v === 'object' && ((v as any).question_text || (v as any).question));
+                if (possibleObj) q = possibleObj as any;
+            }
+
+            const questionText = q?.question_text || q?.question;
+
             const questionToInsert = {
-                topic: q.topic || topic,
-                difficulty: q.difficulty || difficulty,
-                question_text: q.question_text || q.question,
+                topic: (q?.topic || topic.split(' on ').pop()?.replace('.', '') || topic).substring(0, 255),
+                difficulty: q?.difficulty || difficulty,
+                question_text: (questionText && typeof questionText === 'string' && questionText.trim()) ? questionText : `Technical assessment of ${topic}`,
                 category: topic,
                 challenge_type: 'MCQ' as const,
-                options: JSON.stringify(q.options || []),
-                correct_option: q.correct_option || q.answer,
-                explanation: q.explanation || null,
+                options: JSON.stringify(q?.options && Array.isArray(q.options) && q.options.length > 0 ? q.options : ['Option A', 'Option B', 'Option C', 'Option D']),
+                correct_option: (q?.correct_option || q?.answer || 'Option A').toString(),
+                explanation: (q?.explanation && typeof q.explanation === 'string') ? q.explanation : `Concept validation for ${topic}.`,
             };
 
+            console.log('[PracticeService] Inserting question keys:', Object.keys(questionToInsert));
             const [inserted] = await db('questions').insert(questionToInsert).returning('*');
 
             return {

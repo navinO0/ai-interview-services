@@ -47,6 +47,11 @@ class AIProviderFactory {
         const provider = await this.getProvider(userId);
         return provider.generateStream(prompt, systemPrompt);
     }
+
+    async embed(text: string, userId?: string) {
+        const provider = await this.getProvider(userId);
+        return provider.embed(text);
+    }
 }
 
 export default new AIProviderFactory();

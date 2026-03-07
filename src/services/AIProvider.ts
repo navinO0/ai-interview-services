@@ -15,6 +15,11 @@ export interface AIProvider {
      * Returns an object with a `data` property that is a Readable stream.
      */
     generateStream(prompt: string, systemPrompt?: string): Promise<{ data: Readable }>;
+
+    /**
+     * Generate embeddings for a given text.
+     */
+    embed(text: string): Promise<number[]>;
 }
 
 export type AIProviderType = 'ollama' | 'claude' | 'ollama-cli';

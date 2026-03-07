@@ -46,7 +46,7 @@ class WorkspaceService {
             goal: data.goal,
             category: data.category,
             difficulty: data.difficulty,
-            color: data.color,
+            color: data.color || '#4F46E5', // Default Indigo
             learner_level: data.learnerLevel || 'Professional',
             target_days: targetDays,
             progress: 0,
@@ -57,18 +57,30 @@ class WorkspaceService {
 
         if (cached) {
             console.log(`[WorkspaceService] Cache hit for ${fingerprint}. Cloning steps.`);
-            const steps = JSON.parse(cached.steps_structure);
-            await db('workspace_steps').insert(
-                steps.map((s: any, idx: number) => ({
-                    workspace_id: workspace.id,
-                    title: s.title,
-                    description: s.description,
-                    day_number: s.day_number || idx + 1,
-                    tasks: JSON.stringify(s.tasks || []),
-                    estimated_days: 1,
-                    order_index: idx
-                }))
-            );
+
+            let steps = cached.steps_structure;
+            if (typeof steps === 'string') {
+                try {
+                    steps = JSON.parse(steps);
+                } catch (e) {
+                    console.error('[WorkspaceService] Failed to parse cached steps_structure');
+                }
+            }
+
+            if (Array.isArray(steps)) {
+                await db('workspace_steps').insert(
+                    steps.map((s: any, idx: number) => ({
+                        workspace_id: workspace.id,
+                        title: s.title,
+                        description: s.description || 'Learning module details.',
+                        day_number: s.day_number || idx + 1,
+                        tasks: JSON.stringify(s.tasks || []), // Explicitly stringify for JSONB column reliability
+                        estimated_days: 1,
+                        order_index: s.order_index ?? idx
+                    }))
+                );
+            }
+
             workspace.steps = await db('workspace_steps').where({ workspace_id: workspace.id }).orderBy('order_index', 'asc');
             return workspace;
         }

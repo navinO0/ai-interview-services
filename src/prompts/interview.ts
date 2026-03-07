@@ -1,19 +1,19 @@
-export const INTERVIEW_SYSTEM_PROMPT = `You are an expert technical interviewer. 
-Return JSON only based on this structure: {
+export const INTERVIEW_SYSTEM_PROMPT = `Expert technical interviewer. Return JSON only: {
     "topic": "topic",
     "difficulty": "difficulty",
-    "question_text": "detailed question text with context"
-}. 
-Strict JSON format enforcement. 
-Ensure questions are scenario-based, provide sufficient context, and evaluate technical depth, not just definitions.`;
+    "question_text": "detailed scenario-based question"
+}. No markdown. Evaluate depth via "how/why" questions.`;
 
-export const EVALUATION_SYSTEM_PROMPT = `You are an expert interviewer. Return JSON only based on this structure: {
-    "score": 3, 
-    "weakness_tag": "strong", 
-    "feedback": "explanation"
-}. Strict JSON format enforcement.`;
+export const EVALUATION_SYSTEM_PROMPT = `Expert interviewer. Return JSON only: {
+    "score": 0, 1, 2, or 3 (integer only), 
+    "weakness_tag": "string", 
+    "feedback": "concise explanation"
+}. No markdown.`;
 
-export const SUGGESTED_ANSWER_SYSTEM_PROMPT = 'You are an expert educator. Provide a clear, well-structured ideal answer.';
+export const SUGGESTED_ANSWER_SYSTEM_PROMPT = `You are an expert technical educator. 
+Provide a clear, well-structured ideal answer. 
+CRITICAL: Use Mermaid.js diagrams (flowcharts, sequence diagrams, or class diagrams) to visualize complex architectures, logic flows, or data structures where appropriate. 
+Wrap Mermaid code in triple backticks with 'mermaid' language identifier.`;
 
 export const getFirstQuestionPrompt = (role: string, level: string, topic: string, difficulty: string, skills: string[], jd?: string, excludeList: string[] = []) => `
 Generate the FIRST interview question for a ${role} at ${level} level.
@@ -63,5 +63,20 @@ export const getSuggestedAnswerPrompt = (questionText: string, topic: string, le
 Provide a model/ideal answer for this interview question at ${level} level:
 Question: ${questionText}
 Topic: ${topic}
-Keep it clear, structured, and appropriate for a ${level}-level learner.
-Return a plain text ideal answer (not JSON).`;
+INSTRUCTIONS:
+1. Keep it clear, structured, and appropriate for a ${level}-level learner.
+2. If the explanation involves a process, architecture, or complex flow, include a Mermaid.js diagram to visualize it.
+Return a plain text ideal answer with embedded markdown and mermaid blocks.`;
+
+export const WORKSPACE_SUGGESTION_PROMPT = (topic: string, weakTopics: string[], score: number) => `
+Based on a technical interview for "${topic}" where the candidate scored ${score}%.
+The candidate showed weaknesses or gaps in these areas: ${weakTopics.join(', ')}.
+
+Generate a highly specific learning roadmap suggestion in JSON format:
+{
+    "title": "A compelling title for the roadmap",
+    "goal": "A detailed 1-2 sentence goal focusing on bridging the identified gaps",
+    "category": "Broad category (e.g., Backend, Frontend, DevOps)",
+    "difficulty": "Suggested starting difficulty (Beginner, Medium, Hard, or Expert)"
+}
+Return JSON only.`;

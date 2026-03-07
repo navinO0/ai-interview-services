@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { Readable } from 'stream';
 import { AIProvider } from './AIProvider';
 import config from '../config/env';
+import { safeJsonParse } from '../utils/aiHelper';
 
 class ClaudeProvider implements AIProvider {
     private client: Anthropic;
@@ -30,10 +31,29 @@ class ClaudeProvider implements AIProvider {
             const response = await this.client.messages.create({
                 model: this.model,
                 max_tokens: 4096,
-                system: systemContent,
-                messages: [
-                    { role: 'user', content: prompt }
+                system: [
+                    {
+                        type: "text",
+                        text: systemContent,
+                        cache_control: { type: "ephemeral" }
+                    }
                 ],
+                messages: [
+                    {
+                        role: 'user',
+                        content: [
+                            {
+                                type: "text",
+                                text: prompt,
+                                cache_control: { type: "ephemeral" }
+                            }
+                        ]
+                    }
+                ],
+            }, {
+                headers: {
+                    "anthropic-beta": "prompt-caching-2024-07-31"
+                }
             });
 
             const text = response.content
@@ -42,12 +62,7 @@ class ClaudeProvider implements AIProvider {
                 .join('');
 
             if (jsonMode) {
-                // Try to extract JSON from the response
-                const jsonMatch = text.match(/\{[\s\S]*\}/);
-                if (jsonMatch) {
-                    return JSON.parse(jsonMatch[0]);
-                }
-                return JSON.parse(text);
+                return safeJsonParse(text);
             }
 
             return text;
@@ -95,6 +110,13 @@ class ClaudeProvider implements AIProvider {
             console.error('Claude Stream Error:', error.message);
             throw new Error('Failed to start Claude AI stream');
         }
+    }
+
+    async embed(text: string): Promise<number[]> {
+        // Claude doesn't have an embedding API currently in this SDK.
+        // In a real app, we'd use a different provider for embeddings when Claude is selected, 
+        // or a dedicated embedding service. For now, we'll throw or return a placeholder.
+        throw new Error('Claude does not support native embeddings. Please use OpenAI or Ollama for RAG features.');
     }
 }
 

@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { Readable } from 'stream';
 import { AIProvider } from './AIProvider';
 import config from '../config/env';
+import { safeJsonParse } from '../utils/aiHelper';
 
 class OpenAIProvider implements AIProvider {
     private client: OpenAI;
@@ -35,7 +36,7 @@ class OpenAIProvider implements AIProvider {
             const content = response.choices[0].message.content;
 
             if (jsonMode && content) {
-                return JSON.parse(content);
+                return safeJsonParse(content);
             }
 
             return content;
@@ -81,6 +82,19 @@ class OpenAIProvider implements AIProvider {
         } catch (error: any) {
             console.error('OpenAI Stream Error:', error.message);
             throw new Error('Failed to start OpenAI stream');
+        }
+    }
+
+    async embed(text: string): Promise<number[]> {
+        try {
+            const response = await this.client.embeddings.create({
+                model: 'text-embedding-3-small',
+                input: text,
+            });
+            return response.data[0].embedding;
+        } catch (error: any) {
+            console.error('OpenAI Embed Error:', error.message);
+            throw new Error('Failed to generate OpenAI embeddings');
         }
     }
 }

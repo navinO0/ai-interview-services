@@ -1,15 +1,19 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/auth';
 import WorkspaceService from '../services/WorkspaceService';
+import config from '../config/env';
 
 export class WorkspaceController {
     static async list(req: AuthenticatedRequest, res: Response) {
         try {
             const workspaces = await WorkspaceService.listWorkspaces(req.user.id);
             res.json(workspaces);
-        } catch (error) {
+        } catch (error: any) {
             console.error('List Workspaces Error:', error);
-            res.status(500).json({ error: 'Failed to fetch workspaces' });
+            res.status(500).json({
+                error: 'Failed to fetch workspaces',
+                details: config.logging.debug ? error.message : undefined
+            });
         }
     }
 
@@ -18,9 +22,12 @@ export class WorkspaceController {
             const workspace = await WorkspaceService.getWorkspace(req.user.id, req.params.id);
             if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
             res.json(workspace);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Get Workspace Error:', error);
-            res.status(500).json({ error: 'Failed to fetch workspace' });
+            res.status(500).json({
+                error: 'Failed to fetch workspace',
+                details: config.logging.debug ? error.message : undefined
+            });
         }
     }
 
@@ -28,9 +35,12 @@ export class WorkspaceController {
         try {
             const workspace = await WorkspaceService.createWorkspace(req.user.id, req.body);
             res.status(201).json(workspace);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Create Workspace Error:', error);
-            res.status(500).json({ error: 'Failed to create workspace' });
+            res.status(500).json({
+                error: 'Failed to create workspace',
+                details: config.logging.debug ? error.message : undefined
+            });
         }
     }
 

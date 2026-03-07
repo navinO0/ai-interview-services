@@ -95,6 +95,33 @@ class OllamaCLIProvider implements AIProvider {
 
         return { data: readable };
     }
+
+    async embed(text: string): Promise<number[]> {
+        return new Promise((resolve, reject) => {
+            const child = spawn('ollama', ['embeddings', '--model', config.ollama.model, '--prompt', text]);
+            let output = '';
+            let error = '';
+
+            child.stdout.on('data', (data) => {
+                output += data.toString();
+            });
+
+            child.stderr.on('data', (data) => {
+                error += data.toString();
+            });
+
+            child.on('close', (code) => {
+                if (code !== 0) {
+                    return reject(new Error(`Ollama CLI embeddings failed: ${error}`));
+                }
+                try {
+                    resolve(JSON.parse(output.trim()));
+                } catch (e) {
+                    reject(new Error('Failed to parse CLI embeddings output'));
+                }
+            });
+        });
+    }
 }
 
 export default OllamaCLIProvider;

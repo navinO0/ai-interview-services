@@ -40,68 +40,86 @@ export const roadmapWorker = new Worker('roadmap-generation', async (job: Job) =
             
             Now generate details for DAYS ${startDay} to ${endDay} of the total ${totalDays} days.
             
-            For EACH day, provide:
-            1. "day_number": Integer.
+            CRITICAL: For EACH day, provide:
+            1. "day_number": Integer starting from ${startDay}.
             2. "title": Day topic.
-            3. "description": Brief day overview.
-            4. "tasks": EXACTLY 3 tasks (one theory, one mcq, one coding). Each task MUST be an object formatted as: { "type": "theory" | "mcq" | "coding", "title": "...", "content": "..." }. Ensure the "tasks" array is always present.
+            3. "description": 2-3 sentences explaining what will be learned.
+            4. "tasks": EXACTLY 3 objects (theory, mcq, coding). 
+               Each task schema: { "type": string, "title": string, "content": string }.
+               Ensure "tasks" is NEVER empty.
 
-            Respond with a JSON array of ${endDay - startDay + 1} objects.`;
+            Respond with a JSON array.`;
 
-            const systemPrompt = `You are an elite technical mentor. Return JSON array ONLY. Each item: { "day_number": number, "title": string, "description": string, "tasks": Array }`;
+            const systemPrompt = `You are an expert technical curriculum designer. Return a JSON array of objects. Every object must have "day_number", "title", "description", and "tasks".`;
 
             let batch = await ai.generate(prompt, systemPrompt, true, userId);
 
-            // Handle case where AI returns string even in JSON mode (e.g., markdown wrapping)
+            // Handle case where AI returns string even in JSON mode
             if (typeof batch === 'string') {
                 try {
                     const jsonMatch = batch.match(/\[[\s\S]*\]/);
-                    if (jsonMatch) {
-                        batch = JSON.parse(jsonMatch[0]);
-                    } else {
-                        const objMatch = batch.match(/\{[\s\S]*\}/);
-                        if (objMatch) {
-                            batch = JSON.parse(objMatch[0]);
-                        }
-                    }
+                    batch = JSON.parse(jsonMatch ? jsonMatch[0] : batch);
                 } catch (e) {
                     console.error('Failed to parse AI string output');
                 }
             }
 
-            // Sometimes Ollama JSON mode returns an object wrapping the array like { "days": [...] }
+            // Standardize output format
             if (batch && !Array.isArray(batch) && typeof batch === 'object') {
-                let foundArray = false;
-                for (const key of Object.keys(batch)) {
-                    if (Array.isArray(batch[key])) {
-                        batch = batch[key];
-                        foundArray = true;
-                        break;
-                    }
-                }
-
-                // If it's just a single returned day object rather than an array of days
-                if (!foundArray && batch.title && batch.tasks) {
-                    batch = [batch];
-                }
+                const possibleArray = Object.values(batch).find(val => Array.isArray(val));
+                if (possibleArray) batch = possibleArray;
+                else if (batch.title && batch.tasks) batch = [batch];
             }
 
-            if (!Array.isArray(batch)) {
-                console.error('Invalid AI Output:', batch);
-                throw new Error(`AI returned invalid format for days ${startDay}-${endDay}`);
+            if (!Array.isArray(batch) || batch.length === 0) {
+                console.error('Invalid or empty AI Output:', batch);
+                throw new Error(`AI returned no valid days for ${startDay}-${endDay}. Try again with a different model or prompt.`);
             }
 
             // 3. Insert steps for this batch
             await db('workspace_steps').insert(
-                batch.map((s: any, idx: number) => ({
-                    workspace_id: workspaceId,
-                    title: s.title,
-                    description: s.description,
-                    day_number: s.day_number || (generatedDays + idx + 1), // dynamically use tracked days
-                    tasks: JSON.stringify(s.tasks || []),
-                    estimated_days: 1,
-                    order_index: generatedDays + idx
-                }))
+                batch.map((s: any, idx: number) => {
+                    const dayTitle = s.title || `Day ${startDay + idx}`;
+                    // Ensure tasks is NEVER empty and always has the correct structure (array of objects)
+                    let rawTasks = s.tasks;
+                    if (rawTasks && typeof rawTasks === 'object' && !Array.isArray(rawTasks)) {
+                        rawTasks = Object.values(rawTasks); // Convert {t:..., m:..., c:...} to array
+                    }
+
+                    let finalTasks = (Array.isArray(rawTasks) && rawTasks.length > 0) ? rawTasks : [];
+
+                    // Normalize each task to {type, title, content}
+                    finalTasks = finalTasks.map((t: any, i: number) => {
+                        const type = t.type || ['theory', 'mcq', 'coding'][i] || 'theory';
+                        if (typeof t === 'string') {
+                            return { type, title: t, content: t };
+                        }
+                        return {
+                            type: t.type || type,
+                            title: t.title || t.question || t.name || `Task ${i + 1}`,
+                            content: t.content || t.description || t.text || dayTitle
+                        };
+                    });
+
+                    // If still empty after mapping or if AI returned garbage, use defaults
+                    if (finalTasks.length === 0) {
+                        finalTasks = [
+                            { type: 'theory', title: `Fundamentals of ${dayTitle}`, content: `Deep dive into the core concepts and architecture of ${dayTitle}.` },
+                            { type: 'mcq', title: `${dayTitle} Knowledge Check`, content: `Test your understanding with a series of conceptual questions on ${dayTitle}.` },
+                            { type: 'coding', title: `Hands-on ${dayTitle}`, content: `Build a practical implementation or small project focusing on ${dayTitle} features.` }
+                        ];
+                    }
+
+                    return {
+                        workspace_id: workspaceId,
+                        title: dayTitle,
+                        description: s.description || `Master the principles and practices of ${dayTitle}.`,
+                        day_number: s.day_number || (startDay + idx),
+                        tasks: JSON.stringify(finalTasks),
+                        estimated_days: 1,
+                        order_index: generatedDays + idx
+                    };
+                })
             );
 
             generatedDays += batch.length; // Use the actual number of days generated

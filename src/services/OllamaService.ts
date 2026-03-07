@@ -1,6 +1,7 @@
 import { Readable } from 'stream';
 import { AIProvider } from './AIProvider';
 import config from '../config/env';
+import { safeJsonParse } from '../utils/aiHelper';
 
 class OllamaProvider implements AIProvider {
     private client: any = null;
@@ -35,10 +36,19 @@ class OllamaProvider implements AIProvider {
                 system: systemPrompt,
                 stream: false,
                 ...(jsonMode ? { format: 'json' } : {}),
+                options: {
+                    num_predict: jsonMode ? 1024 : 400,  // increased for JSON to avoid truncation
+                    temperature: 0.5,                    // slightly lower = more deterministic
+                    num_ctx: 2048,                       // smaller context improves speed
+                    top_p: 0.8,
+                    repeat_penalty: 1.05,
+                    num_thread: 6,                       // better for most i5 CPUs
+                    num_batch: 512                       // improves generation throughput
+                }
             });
 
             if (jsonMode) {
-                return JSON.parse(response.response);
+                return safeJsonParse(response.response);
             }
             return response.response;
         } catch (error: any) {
@@ -132,6 +142,20 @@ class OllamaProvider implements AIProvider {
         } catch (error) {
             console.error('Ollama PullModel Error:', error);
             throw new Error(`Failed to pull model ${modelName}`);
+        }
+    }
+
+    async embed(text: string): Promise<number[]> {
+        try {
+            const client = await this.getClient();
+            const response = await client.embeddings({
+                model: this.modelName,
+                prompt: text,
+            });
+            return response.embedding;
+        } catch (error) {
+            console.error('Ollama Embed Error:', error);
+            throw new Error('Failed to generate embeddings');
         }
     }
 }

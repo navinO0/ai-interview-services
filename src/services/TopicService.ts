@@ -1,10 +1,14 @@
 import ai from './aiProviderFactory';
 import { TOPIC_SYSTEM_PROMPT, getTopicExplanationPrompt } from '../prompts/topic';
 
+export interface Chapter {
+    title: string;
+    content: string;
+}
+
 export interface TopicExplanation {
     title: string;
-    explanation: string;
-    codeExamples: string;
+    chapters: Chapter[];
     keyPoints: string[];
     commonInterviewQuestions: string[];
     useCases: string[];
@@ -24,10 +28,22 @@ class TopicService {
             const result = await ai.generate(prompt, systemPrompt, true);
 
             // Basic validation/fallback
+            let chapters = result.chapters;
+            if (!chapters || !Array.isArray(chapters) || chapters.length === 0) {
+                // Fallback if AI didn't follow the chapter structure
+                chapters = [{
+                    title: "Overview",
+                    content: result.explanation || result.content || "No detailed content generated."
+                }];
+                // if it returned codeExamples separately, append them to the first chapter
+                if (result.codeExamples) {
+                    chapters[0].content += `\n\n### Code Examples\n\n${result.codeExamples}`;
+                }
+            }
+
             return {
                 title: result.title || topic,
-                explanation: result.explanation || "No explanation generated.",
-                codeExamples: result.codeExamples || "",
+                chapters: chapters,
                 keyPoints: result.keyPoints || [],
                 commonInterviewQuestions: result.commonInterviewQuestions || [],
                 useCases: result.useCases || [],

@@ -36,6 +36,13 @@ export const config = {
     redis: {
         url: process.env.REDIS_URL || 'redis://localhost:6379',
     },
+    kafka: {
+        brokers: (process.env.KAFKA_BROKERS || 'localhost:19092').split(','),
+        clientId: 'interview-coach-api',
+    },
+    socket: {
+        corsOrigin: process.env.CORS_ORIGIN || '*',
+    },
     search: {
         enabled: process.env.ENABLE_WEB_SEARCH === 'true',
         tavilyApiKey: process.env.TAVILY_API_KEY || '',
@@ -43,6 +50,7 @@ export const config = {
     logging: {
         logAiPrompts: process.env.LOG_AI_PROMPTS === 'true',
         logDbQueries: process.env.LOG_DB_QUERIES === 'true',
+        debug: process.env.DEBUG === 'true',
     },
 };
 

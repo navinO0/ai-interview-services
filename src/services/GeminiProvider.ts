@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Readable } from 'stream';
 import { AIProvider } from './AIProvider';
 import config from '../config/env';
+import { safeJsonParse } from '../utils/aiHelper';
 
 class GeminiProvider implements AIProvider {
     private genAI: GoogleGenerativeAI;
@@ -28,12 +29,7 @@ class GeminiProvider implements AIProvider {
             const text = response.text();
 
             if (jsonMode) {
-                // Gemini sometimes wraps JSON in markdown blocks
-                const jsonMatch = text.match(/\{[\s\S]*\}/);
-                if (jsonMatch) {
-                    return JSON.parse(jsonMatch[0]);
-                }
-                return JSON.parse(text);
+                return safeJsonParse(text);
             }
 
             return text;
@@ -72,6 +68,17 @@ class GeminiProvider implements AIProvider {
         } catch (error: any) {
             console.error('Gemini Stream Error:', error.message);
             throw new Error('Failed to start Gemini stream');
+        }
+    }
+
+    async embed(text: string): Promise<number[]> {
+        try {
+            const result = await this.genAI.getGenerativeModel({ model: 'text-embedding-004' })
+                .embedContent(text);
+            return Array.from(result.embedding.values);
+        } catch (error: any) {
+            console.error('Gemini Embed Error:', error.message);
+            throw new Error('Failed to generate Gemini embeddings');
         }
     }
 }

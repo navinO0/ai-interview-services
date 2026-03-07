@@ -43,6 +43,26 @@ const swaggerOptions = {
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
+// Rate Limiting
+import rateLimit from 'express-rate-limit';
+import RedisStore from 'rate-limit-redis';
+import { createClient } from 'redis';
+
+const redisClient = createClient({ url: config.redis.url });
+redisClient.connect().catch(console.error);
+
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    standardHeaders: true,
+    legacyHeaders: false,
+    store: new RedisStore({
+        sendCommand: (...args: string[]) => redisClient.sendCommand(args),
+    }),
+});
+
+app.use('/api/', limiter);
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -146,6 +166,9 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 import { checkConnectivity } from './utils/healthCheck';
 import db from './config/db';
 import './workers/RoadmapWorker'; // Start the roadmap worker
+import './workers/AIWorker'; // Start the AI task worker
+import SocketService from './services/SocketService';
+import KafkaService from './services/KafkaService';
 
 const PORT = config.port;
 let server: any;
@@ -154,6 +177,11 @@ if (config.env !== 'test') {
     server = app.listen(PORT, async () => {
         logger.info(`Backend service running on port ${PORT}`);
         logger.info(`Swagger documentation available at http://localhost:${PORT}/api-docs`);
+
+        // Initialize Core Services
+        await SocketService.init(server);
+        await KafkaService.connect();
+
         await checkConnectivity();
     });
 }
@@ -169,6 +197,7 @@ const gracefulShutdown = async (signal: string) => {
     }
 
     try {
+        await KafkaService.disconnect();
         await db.destroy();
         logger.info('Database connection closed.');
         process.exit(0);

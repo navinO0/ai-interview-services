@@ -9,7 +9,8 @@ import {
     getFirstQuestionPrompt,
     getNextQuestionPrompt,
     getEvaluationPrompt,
-    getSuggestedAnswerPrompt
+    getSuggestedAnswerPrompt,
+    WORKSPACE_SUGGESTION_PROMPT
 } from '../prompts/interview';
 
 class InterviewService {
@@ -74,8 +75,18 @@ class InterviewService {
         const level = interview.learner_level || LearnerLevel.PROFESSIONAL;
 
         // 1. Evaluate current answer
-        const evalPrompt = getEvaluationPrompt(question.question_text, answerText, level);
-        const evaluation: EvaluationResult = await ai.generate(evalPrompt, EVALUATION_SYSTEM_PROMPT, true, userId);
+        let evaluation: EvaluationResult;
+        try {
+            const evalPrompt = getEvaluationPrompt(question.question_text, answerText, level);
+            evaluation = await ai.generate(evalPrompt, EVALUATION_SYSTEM_PROMPT, true, userId);
+        } catch (error) {
+            console.error('Failed to evaluate answer:', error);
+            evaluation = {
+                score: 1,
+                weakness_tag: 'critical',
+                feedback: 'The AI was unable to provide a detailed evaluation at this time. Please proceed to the next question.'
+            };
+        }
 
         // 2. Generate suggested answer
         const suggestedPrompt = getSuggestedAnswerPrompt(question.question_text, interview.topic, level);
@@ -85,7 +96,7 @@ class InterviewService {
             interview_id: interviewId,
             question_id: questionId,
             answer_text: answerText,
-            score: evaluation.score || 0,
+            score: Math.round(Number(evaluation.score) || 0),
             weakness_tag: evaluation.weakness_tag || 'critical',
             feedback: evaluation.feedback || 'System error during evaluation.',
             suggested_answer: typeof suggestedAnswer === 'string' ? suggestedAnswer : JSON.stringify(suggestedAnswer),
@@ -102,7 +113,11 @@ class InterviewService {
                 .where({ interview_id: interviewId })
                 .select('questions.question_text', 'answers.answer_text', 'answers.score', 'answers.weakness_tag');
 
-            const historyText = history.map(h => `Q: ${h.question_text}\nA: ${h.answer_text}\nResult: ${h.weakness_tag} (Score ${h.score})`).join('\n---\n');
+            // Sliding window: last 3 exchanges
+            const historyText = history
+                .slice(-3)
+                .map((h: any) => `Q: ${h.question_text}\nA: ${h.answer_text}\nRes: ${h.weakness_tag}(${h.score})`)
+                .join('\n---\n');
 
             // Fetch ALL historic questions for this user and topic across all interviews
             const globalHistory = await db('answers')
@@ -111,7 +126,11 @@ class InterviewService {
                 .where({ 'interviews.user_id': userId, 'interviews.topic': interview.topic })
                 .select('questions.question_text');
 
-            const fullExcludeList = [...new Set([...globalHistory.map(h => h.question_text), ...history.map(h => h.question_text)])];
+            // Cap exclude list to last 15 questions
+            const fullExcludeList = [...new Set([
+                ...globalHistory.slice(-15).map((h: any) => h.question_text),
+                ...history.slice(-15).map((h: any) => h.question_text)
+            ])];
 
             const nextPrompt = getNextQuestionPrompt(
                 interview.role || 'Learner',
@@ -164,12 +183,31 @@ class InterviewService {
             .filter(a => (a.score || 0) < 2)
             .map(a => a.weakness_tag);
 
-        const workspaceSuggestion = {
+        const weakTopicsClean = [...new Set(weakTopics)];
+
+        let workspaceSuggestion = {
             title: `${interview.topic} Preparation Roadmap`,
-            goal: `Master ${weakTopics.slice(0, 2).join(', ')} and improve overall depth in ${interview.topic}.`,
+            goal: `Master ${weakTopicsClean.slice(0, 2).join(', ')} and improve overall depth in ${interview.topic}.`,
             category: interview.topic || 'General',
             difficulty: interview.difficulty || Difficulty.EXPERT
         };
+
+        if (weakTopicsClean.length > 0) {
+            try {
+                const suggestionPrompt = WORKSPACE_SUGGESTION_PROMPT(interview.topic, weakTopicsClean, Math.round(avgScore));
+                const aiSuggestion = await ai.generate(suggestionPrompt, "Expert career coach. Return JSON only.", true, interview.user_id);
+                if (aiSuggestion && typeof aiSuggestion === 'object') {
+                    workspaceSuggestion = {
+                        title: aiSuggestion.title || workspaceSuggestion.title,
+                        goal: aiSuggestion.goal || workspaceSuggestion.goal,
+                        category: aiSuggestion.category || workspaceSuggestion.category,
+                        difficulty: aiSuggestion.difficulty || workspaceSuggestion.difficulty
+                    };
+                }
+            } catch (e) {
+                console.error('[InterviewService] Failed to generate dynamic suggestion', e);
+            }
+        }
 
         return {
             interview_id: interviewId,

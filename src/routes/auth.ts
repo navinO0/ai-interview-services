@@ -88,7 +88,7 @@ router.get('/me', authMiddleware as RequestHandler, AuthController.getMe);
 // Google OAuth routes
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
-router.get('/google/callback', passport.authenticate('google', { failureRedirect: 'http://localhost:3000/login?error=oauth_failed' }), (req: Request, res: Response) => {
+router.get('/google/callback', passport.authenticate('google', { failureRedirect: `${config.frontendUrl}/login?error=oauth_failed` }), (req: Request, res: Response) => {
     const user = req.user as any;
 
     // Generate JWT token
@@ -99,7 +99,7 @@ router.get('/google/callback', passport.authenticate('google', { failureRedirect
     );
 
     // Redirect to frontend with token
-    res.redirect(`http://localhost:3000/auth/callback?token=${token}`);
+    res.redirect(`${config.frontendUrl}/auth/callback?token=${token}`);
 });
 
 export default router;

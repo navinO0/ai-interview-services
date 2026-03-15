@@ -10,6 +10,11 @@ class SocketService {
     private io: Server | null = null;
 
     async init(httpServer: any) {
+        if (!config.socket.enabled) {
+            logger.info('Socket.io is disabled via configuration. Skipping initialization.');
+            return;
+        }
+
         this.io = new Server(httpServer, {
             cors: {
                 origin: config.socket.corsOrigin,
@@ -17,17 +22,23 @@ class SocketService {
             },
         });
 
-        // Setup Redis Adapter for scaling
-        const pubClient = createClient({ url: config.redis.url });
-        const subClient = pubClient.duplicate();
+        // Setup Redis Adapter for scaling (optional)
+        if (config.redis.enabled) {
+            const pubClient = createClient({ url: config.redis.url });
+            const subClient = pubClient.duplicate();
 
-        try {
-            await Promise.all([pubClient.connect(), subClient.connect()]);
-            this.io.adapter(createAdapter(pubClient, subClient));
-            logger.info('Socket.io Redis adapter connected successfully');
-        } catch (err) {
-            logger.error({ err }, 'Failed to connect Socket.io Redis adapter');
-            throw err;
+            try {
+                await Promise.all([pubClient.connect(), subClient.connect()]);
+                this.io.adapter(createAdapter(pubClient, subClient));
+                logger.info('Socket.io Redis adapter connected successfully');
+            } catch (err) {
+                logger.error({ err }, 'Failed to connect Socket.io Redis adapter');
+                // Don't throw, let it fall back to memory adapter if Redis fails? 
+                // Actually, if it's explicitly enabled, maybe we should throw.
+                // But for resilience, we'll just log and continue.
+            }
+        } else {
+            logger.info('ℹ️  Redis is disabled. Socket.io will use default Memory adapter.');
         }
 
         this.io.on('connection', (socket: Socket) => {

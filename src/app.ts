@@ -1,5 +1,22 @@
 import config from './config/env';
+import * as Sentry from "@sentry/node";
+import { nodeProfilingIntegration } from "@sentry/profiling-node";
+
+// Initialize Sentry before anything else
+if (config.sentry.dsn) {
+    Sentry.init({
+        dsn: config.sentry.dsn,
+        integrations: [
+            nodeProfilingIntegration(),
+        ],
+        // Performance Monitoring
+        tracesSampleRate: 1.0, 
+        profilesSampleRate: 1.0,
+    });
+}
+
 import express, { Request, Response, NextFunction } from 'express';
+import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
 import pino from 'pino';
@@ -12,6 +29,11 @@ import swaggerUi from 'swagger-ui-express';
 const logger = pino();
 
 const app = express();
+
+// Sentry request handler must be the first middleware on the app
+if (config.sentry.dsn) {
+    Sentry.setupExpressErrorHandler(app);
+}
 
 // Swagger configuration
 const swaggerOptions = {
@@ -48,31 +70,46 @@ import rateLimit from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import { createClient } from 'redis';
 
-const redisClient = createClient({ url: config.redis.url });
-redisClient.connect().catch(console.error);
-
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
+let limiterOptions: any = {
+    windowMs: 15 * 60 * 1000,
+    max: 100,
     standardHeaders: true,
     legacyHeaders: false,
-    store: new RedisStore({
+};
+
+if (config.redis.enabled) {
+    const redisClient = createClient({ url: config.redis.url });
+    redisClient.connect().catch(err => logger.error({ err }, 'Redis connection failed'));
+    limiterOptions.store = new RedisStore({
         sendCommand: (...args: string[]) => redisClient.sendCommand(args),
-    }),
-});
+    });
+} else {
+    logger.info('ℹ️  Redis is disabled. Rate limiting will use MemoryStore.');
+}
+
+const limiter = rateLimit(limiterOptions);
 
 app.use('/api/', limiter);
 
-// Middleware
-app.use(cors());
+// Security Middleware
+app.use(helmet());
+app.use(cors({
+    origin: config.frontendUrl,
+    credentials: true,
+}));
 app.use(express.json());
 app.use(morgan('dev'));
 
 // Session and Passport Middleware
 app.use(session({
-    secret: config.jwt.secret,
+    secret: config.sessionSecret,
     resave: false,
-    saveUninitialized: false
+    saveUninitialized: false,
+    cookie: {
+        httpOnly: true,
+        secure: config.env === 'production',
+        sameSite: 'lax',
+    }
 }));
 app.use(passport.initialize());
 app.use(passport.session());
@@ -176,11 +213,29 @@ let server: any;
 if (config.env !== 'test') {
     server = app.listen(PORT, async () => {
         logger.info(`Backend service running on port ${PORT}`);
-        logger.info(`Swagger documentation available at http://localhost:${PORT}/api-docs`);
-
+        logger.info(`--- Infrastructure Access Links ---`);
+        logger.info(`📜 Swagger API Docs: http://localhost:${PORT}/api-docs`);
+        
+        if (config.redis.enabled) {
+            logger.info(`🔵 Redis Insight: ${config.redis.insightUrl}`);
+        }
+        
         // Initialize Core Services
         await SocketService.init(server);
-        await KafkaService.connect();
+
+        if (config.kafka.enabled) {
+            logger.info(`🔴 Redpanda Console: ${config.kafka.consoleUrl}`);
+            await KafkaService.connect();
+        } else {
+            logger.info(`ℹ️  Kafka is disabled.`);
+        }
+
+        if (config.sentry.dsn) {
+            logger.info(`🚀 Sentry Dashboard: ${config.sentry.dashboardUrl}`);
+        } else {
+            logger.info(`ℹ️  Sentry DSN missing. Dashboard: ${config.sentry.dashboardUrl}`);
+        }
+        logger.info(`-----------------------------------`);
 
         await checkConnectivity();
     });
@@ -197,7 +252,9 @@ const gracefulShutdown = async (signal: string) => {
     }
 
     try {
-        await KafkaService.disconnect();
+        if (config.kafka.enabled) {
+            await KafkaService.disconnect();
+        }
         await db.destroy();
         logger.info('Database connection closed.');
         process.exit(0);

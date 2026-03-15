@@ -18,6 +18,10 @@ class KafkaService {
     }
 
     async connect() {
+        if (!config.kafka.enabled) {
+            logger.info('Kafka is disabled via configuration. Skipping connection.');
+            return;
+        }
         try {
             await this.producer.connect();
             logger.info('Kafka Producer connected');

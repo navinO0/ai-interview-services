@@ -30,6 +30,10 @@ const logger = pino();
 
 const app = express();
 
+if (config.trustProxy) {
+    app.set('trust proxy', 1);
+}
+
 // Sentry request handler must be the first middleware on the app
 if (config.sentry.dsn) {
     Sentry.setupExpressErrorHandler(app);
@@ -94,7 +98,7 @@ app.use('/api/', limiter);
 // Security Middleware
 app.use(helmet());
 app.use(cors({
-    origin: config.frontendUrl,
+    origin: true,
     credentials: true,
 }));
 app.use(express.json());
@@ -204,8 +208,6 @@ import { checkConnectivity } from './utils/healthCheck';
 import db from './config/db';
 import './workers/RoadmapWorker'; // Start the roadmap worker
 import './workers/AIWorker'; // Start the AI task worker
-import SocketService from './services/SocketService';
-import KafkaService from './services/KafkaService';
 
 const PORT = config.port;
 let server: any;
@@ -213,29 +215,21 @@ let server: any;
 if (config.env !== 'test') {
     server = app.listen(PORT, async () => {
         logger.info(`Backend service running on port ${PORT}`);
-        logger.info(`--- Infrastructure Access Links ---`);
-        logger.info(`📜 Swagger API Docs: http://localhost:${PORT}/api-docs`);
+        logger.info(`--- Infrastructure Access (DNS / External) ---`);
+        logger.info(`📜 API & Docs:      https://api.${config.domain} (or http://localhost:${PORT}/api-docs)`);
         
         if (config.redis.enabled) {
-            logger.info(`🔵 Redis Insight: ${config.redis.insightUrl}`);
+            logger.info(`🔵 Redis Insight:   ${config.redis.externalUrl} (or ${config.redis.insightUrl})`);
         }
         
-        // Initialize Core Services
-        await SocketService.init(server);
 
-        if (config.kafka.enabled) {
-            logger.info(`🔴 Redpanda Console: ${config.kafka.consoleUrl}`);
-            await KafkaService.connect();
-        } else {
-            logger.info(`ℹ️  Kafka is disabled.`);
-        }
+
+        logger.info(`🦙 Ollama API:      ${config.ollama.externalUrl} (or ${config.ollama.url})`);
 
         if (config.sentry.dsn) {
-            logger.info(`🚀 Sentry Dashboard: ${config.sentry.dashboardUrl}`);
-        } else {
-            logger.info(`ℹ️  Sentry DSN missing. Dashboard: ${config.sentry.dashboardUrl}`);
+            logger.info(`🚀 Sentry Dash:     ${config.sentry.dashboardUrl}`);
         }
-        logger.info(`-----------------------------------`);
+        logger.info(`----------------------------------------------`);
 
         await checkConnectivity();
     });
@@ -252,9 +246,6 @@ const gracefulShutdown = async (signal: string) => {
     }
 
     try {
-        if (config.kafka.enabled) {
-            await KafkaService.disconnect();
-        }
         await db.destroy();
         logger.info('Database connection closed.');
         process.exit(0);

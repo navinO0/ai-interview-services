@@ -4,7 +4,9 @@ dotenv.config();
 export const config = {
     env: process.env.NODE_ENV || 'development',
     port: parseInt(process.env.PORT || '3001', 10),
-    frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000', // CRITICAL: Used for CORS allowed origin
+    domain: process.env.DOMAIN || 'navin.lol',
+    trustProxy: process.env.TRUST_PROXY !== 'false', // Default to true for proxy support
+    frontendUrl: (process.env.FRONTEND_URL || 'http://localhost:3000').split(',').map((o) => o.trim()), // CRITICAL: Used for CORS allowed origin
     database: {
         url: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/interview_coach',
     },
@@ -24,6 +26,7 @@ export const config = {
         url: process.env.OLLAMA_URL || 'http://localhost:11434',
         model: process.env.MODEL_NAME || 'phi3:mini',
         allowDirectAccess: process.env.ALLOW_DIRECT_AI === 'true',
+        externalUrl: process.env.OLLAMA_EXTERNAL_URL || 'https://ollama.navin.lol',
     },
     claude: {
         apiKey: process.env.ANTHROPIC_API_KEY || '',
@@ -41,20 +44,7 @@ export const config = {
         enabled: process.env.ENABLE_REDIS !== 'false', // Default to true
         url: process.env.REDIS_URL || 'redis://localhost:6379',
         insightUrl: process.env.REDIS_INSIGHT_URL || 'http://localhost:5540',
-    },
-    kafka: {
-        enabled: process.env.ENABLE_KAFKA === 'true',
-        brokers: (process.env.KAFKA_BROKERS || 'localhost:19092').split(','),
-        clientId: 'interview-coach-api',
-        consoleUrl: process.env.KAFKA_CONSOLE_URL || 'http://localhost:8080',
-    },
-    socket: {
-        enabled: process.env.ENABLE_SOCKET === 'true',
-        // Parse comma-separated origins into array so Socket.io accepts all of them.
-        // e.g. "http://localhost:3000,https://navin.lol,https://app.navin.lol"
-        corsOrigin: (process.env.SOCKET_CORS_ORIGIN || 'http://localhost:3000')
-            .split(',')
-            .map((o) => o.trim()),
+        externalUrl: process.env.REDIS_INSIGHT_EXTERNAL_URL || 'https://insight.navin.lol',
     },
     search: {
         enabled: process.env.ENABLE_WEB_SEARCH === 'true',
